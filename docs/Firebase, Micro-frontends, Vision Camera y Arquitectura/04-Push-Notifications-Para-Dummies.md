@@ -482,6 +482,137 @@ await admin.messaging().send({
 
 ---
 
+## 🔗 Deep Linking — "El Enlace que Abre la Página Exacta"
+
+### ¿Qué es?
+
+**Analogía**: Cuando alguien te manda un link de WhatsApp como `https://tienda.com/productos/zapatos-123`, ese link no solo abre el sitio web, te lleva **directamente a los zapatos** sin que tenyas que buscarlos. Eso es deep linking.
+
+En apps móviles, el deep link es una URL que **abre la app directamente en una pantalla específica**, en vez de solo abrir la app en el inicio.
+
+```mermaid
+graph LR
+    A["🔔 Usuario toca notificación\n'Tu pedido #1234 está listo'"]
+    B{"¿App instalada?"}
+    C["📱 Abre app directamente\nen la pantalla del pedido #1234"]
+    D["🌐 Abre el navegador\nen la URL alternativa"]
+
+    A --> B
+    B -->|"Sí"| C
+    B -->|"No"| D
+```
+
+### Tipos de Deep Links
+
+| Tipo | Ejemplo | ¿Cuándo usar? |
+|------|---------|---------------|
+| **Custom Scheme** | `miapp://pedidos/1234` | Apps simples, no funciona en web |
+| **Universal Links (iOS)** | `https://tienda.com/pedidos/1234` | Producción, si app no está se abre web |
+| **App Links (Android)** | `https://tienda.com/pedidos/1234` | Producción, igual que Universal Links |
+
+### Implementación con React Navigation
+
+```typescript
+// 1. Definir el esquema de URLs de tu app
+// app.json (Expo) o AndroidManifest.xml / Info.plist
+// Scheme: "miapp" → miapp://
+
+// 2. Configurar el linking en React Navigation
+import { NavigationContainer } from '@react-navigation/native';
+
+const linking = {
+  prefixes: [
+    'miapp://',                    // Custom scheme
+    'https://tienda.com',          // Universal/App Links
+  ],
+  config: {
+    screens: {
+      Home: '',                          // miapp://  o  tienda.com/
+      OrderDetail: 'pedidos/:orderId',   // miapp://pedidos/1234
+      Chat: 'chat/:chatId',             // miapp://chat/abc
+      Profile: 'perfil',                // miapp://perfil
+      ProductDetail: {
+        path: 'productos/:productId',   // miapp://productos/zapatos-123
+        parse: {
+          productId: (id: string) => id.toUpperCase(), // transformar params
+        },
+      },
+    },
+  },
+};
+
+function App() {
+  return (
+    <NavigationContainer linking={linking}>
+      {/* tus navegadores */}
+    </NavigationContainer>
+  );
+}
+```
+
+### Conectar Deep Links con Push Notifications
+
+La conexión clave: el campo `data` de la notificación contiene la URL o los parámetros para navegar.
+
+```typescript
+// En el backend: enviar notificación con deep link info
+await admin.messaging().send({
+  token: user.fcmToken,
+  notification: {
+    title: '¡Tu pedido está listo! 📦',
+    body: 'Pedido #1234 listo para recoger',
+  },
+  data: {
+    // Opción A: URL directa
+    deepLink: 'miapp://pedidos/1234',
+
+    // Opción B: tipo + parámetros (más flexible)
+    type: 'order_ready',
+    orderId: '1234',
+  },
+});
+
+// En la app: interpretar los datos y navegar
+function handleNotificationNavigation(remoteMessage, navigation) {
+  const { deepLink, type, orderId, chatId, productId } = remoteMessage.data ?? {};
+
+  // Opción A: si viene URL directa, usarla
+  if (deepLink) {
+    Linking.openURL(deepLink);
+    return;
+  }
+
+  // Opción B: navegar según tipo
+  switch (type) {
+    case 'order_ready':
+    case 'new_order':
+      navigation.navigate('OrderDetail', { orderId });
+      break;
+    case 'new_message':
+      navigation.navigate('Chat', { chatId });
+      break;
+    case 'product_offer':
+      navigation.navigate('ProductDetail', { productId });
+      break;
+    default:
+      navigation.navigate('Home');
+  }
+}
+```
+
+### Probar Deep Links desde la terminal
+
+```bash
+# Android (abrir deep link en el emulador)
+adb shell am start -W -a android.intent.action.VIEW \
+  -d "miapp://pedidos/1234" com.tuapp
+
+# iOS (abrir deep link en el simulador)
+xcrun simctl openurl booted "miapp://pedidos/1234"
+```
+
+---
+
 ## ✅ Checklist de Implementación
 
 ```
